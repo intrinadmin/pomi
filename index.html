@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  
+  <meta charset="UTF-8">
+  <title>Pomi</title>
+  
+</head>
+<body>
+  
+  <div class='app'>
+  
+    <input type='text' id='next-task-input' placeholder='tehtävä'></input>
+
+    <p>
+      <button id='start'>Start</button>
+      <button id='pause'>Pause</button>
+      <button id='skip'>Skip</button>
+      <button id='stop'>Reset</button>
+    </p>
+
+    <h2>Current task</h2>
+    <p id='current-task'></p>
+    <p id='current-task-start-time'></p>
+    <p id='current-task-status'></p>
+
+    <h1 id='reading'></h1>
+
+
+    <h2>Past tasks</h2>
+    <div id='list'></div>
+
+
+  </div>
+
+  <script>
+  
+    // Pomidoro laskuri
+    // inspired by JavaScript30 Countdown Timer by Wes Bos
+
+    // parhaillaan laskennassa oleva aikaviipale
+    let countdown;
+
+    // pomidoron oletuspituus 25 min
+    const work_mins = 25; //0.166;
+    const short_break_mins = 5; //0.085;
+    const long_break_mins = 15;
+
+
+    const pattern = [ {step: 1, type: 'work', mins: work_mins},
+                      {step: 2, type: 'short break', mins: short_break_mins},
+                      {step: 3, type: 'work', mins: work_mins},
+                      {step: 4, type: 'short break', mins: short_break_mins},
+                      {step: 5, type: 'work', mins: work_mins},
+                      {step: 6, type: 'short break', mins: short_break_mins},
+                      {step: 7, type: 'work', mins: work_mins},
+                      {step: 8, type: 'long break', mins: long_break_mins}]
+
+
+
+    // Laskuri joka laskee paljonko aikaa jäljellä.
+    // Saa parametrinaan sekunnit
+    // pomidorolaskurin voi pysäyttää ja käynnistää uudelleen milloin vain. Jos pomidoro pysäytetään kesken niin
+    // laskuri nollataan ja aloitetaan uusi laskuri siitä mihin edellinen pomidoro jäi.
+    // tämä funktio ei tiedä pomidoro-logiikasta mitään vaan hoitelee vain saamansa sekuntien laskennan
+    const counter = function(seconds) {
+
+      // nollataan jos on aikaisempia laskureita
+      resetCounter();
+
+      const begin = Date.now();
+      const then = begin + seconds * 1000;
+
+      countdown = setInterval(() => {
+
+        const secondsLeft = Math.round((then - Date.now()) / 1000);
+
+        // stops if time expires
+        if (secondsLeft < 0) {
+          resetCounter();
+          Pomidoro.update(secondsLeft);
+          Pomidoro.end();
+          return;
+        }
+
+        Pomidoro.update(secondsLeft);
+
+      }, 1000);
+
+    }
+
+
+    function pauseCounter() {
+
+
+    }
+
+
+
+    function resetCounter() {
+
+      clearInterval(countdown);
+   
+      displayTimeLeft(App.getCurrentStep().mins * 60);
+
+    }
+
+
+    function stopCounter() {
+
+      clearInterval(countdown);
+
+    }
+
+
+
+
+    function displayTimeLeft(secs) {
+
+      if (secs < 0) return;
+
+
+      const minutes = Math.floor(secs / 60);
+      const seconds = secs % 60;
+
+      const reading = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+
+      document.getElementById('reading').textContent = reading;
+
+      document.title = reading;
+
+    }
+
+
+
+    // current pomidoro chunk data kept here
+    const Pomidoro = {
+
+
+      set: function() {
+
+        console.log("Pomidoro.SET");
+
+        const chunk = App.getCurrentStep();
+
+        Pomidoro.total_seconds = chunk.mins * 60;
+        Pomidoro.start_time = 0;
+        Pomidoro.time_left = chunk.mins * 60;
+        Pomidoro.time_passed = 0;
+        Pomidoro.end_time = 0;
+        Pomidoro.type = chunk.type;
+        Pomidoro.task_name = 'my current task';
+
+      },
+
+
+      start: function() {
+
+        //console.log(Pomidoro.time_left);
+
+
+        const seconds = Pomidoro.time_left;
+
+        Pomidoro.task_name = document.getElementById('next-task-input').value;
+        Pomidoro.start_time = Date.now();
+        Pomidoro.total_seconds = seconds;
+
+        
+        
+        counter(seconds);
+
+        Pomidoro.displayData();
+
+      },
+
+
+      update: function(seconds_left) {
+
+        Pomidoro.time_left = seconds_left;
+        Pomidoro.time_passed = Pomidoro.total_seconds - seconds_left;
+        Pomidoro.end_time = Date.now();
+
+        displayTimeLeft(seconds_left);
+
+      },
+
+      skip: function() {
+        Pomidoro.reset()
+        Pomidoro.end()
+      },
+
+      pause: function() {
+
+        stopCounter();
+
+        document.getElementById('current-task-status').innerText = 'Paused';
+
+      },
+
+      reset: function() {
+
+        resetCounter();
+
+        App.takeStep();
+        Pomidoro.set();
+
+      },
+
+      // when pomidoro ends saves the chunk data
+      end: function() {
+
+        console.log("Tallennetaan...");
+
+        const data = {task: Pomidoro.task_name, start_time: Pomidoro.start_time, total_time: Pomidoro.total_seconds}
+
+        List.chunks.push(data);
+
+        List.display();
+
+
+        // moves to next pomidoro chunk and resets Pomidoro
+        App.takeStep();
+        Pomidoro.set();
+
+      },
+
+      displayData: function() {
+
+        // taskin nimi
+        document.getElementById('current-task').innerText = Pomidoro.task_name;
+
+        // aika
+        const moment = new Date(Pomidoro.start_time);
+
+        const hrs = moment.getHours();
+        const mins = moment.getMinutes();
+
+        document.getElementById('current-task-start-time').innerText = `${hrs}:${mins < 10 ? '0' : ''}${mins}`;
+
+      }
+
+    }
+
+
+    const List = {
+
+      // menneet viipaleet
+      chunks: [],
+
+      display: function() {
+
+        const list_html = List.chunks.map(chunk => {
+
+          return `<p>${chunk['task']},${App.formatTime(chunk['start_time'])},${App.formatSeconds(chunk['total_time'])}</p>`;
+
+        }).join('');
+
+        document.getElementById('list').innerHTML = list_html;
+
+      }
+
+    }
+
+
+
+
+    const App = {
+
+      init: function() {
+
+        const startButton = document.getElementById('start');
+        const stopButton = document.getElementById('stop');
+        const pauseButton = document.getElementById('pause');
+        const skipButton = document.getElementById('skip');
+
+        startButton.addEventListener('click', Pomidoro.start);
+        stopButton.addEventListener('click', Pomidoro.reset);
+        pauseButton.addEventListener('click', Pomidoro.pause);
+        skipButton.addEventListener('click', Pomidoro.skip);
+
+        // eka askel
+        App.current_step = 1;
+
+
+        Pomidoro.set();
+
+        displayTimeLeft(Pomidoro.time_left);
+
+      }, 
+
+      hello: function() {
+        console.log("I'm App!");
+      },
+
+      formatSeconds: function(seconds) {
+
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+
+        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+      },
+
+      formatTime: function(time) {
+
+        const moment = new Date(time);
+
+        const hrs = moment.getHours();
+        const mins = moment.getMinutes();
+
+        return `${hrs}:${mins < 10 ? '0' : ''}${mins}`;
+
+      },
+
+      // next step in pattern
+      takeStep: function() {
+
+        App.current_step >= pattern.length ? App.current_step = 1 : App.current_step++;
+
+        console.log(App.current_step);
+
+      },
+
+      // get the current step
+      getCurrentStep: function() {
+
+        return pattern.find(({step}) => step === App.current_step);
+
+      }
+
+
+
+    }
+
+
+
+    document.addEventListener('DOMContentLoaded', App.init);
+
+
+
+  </script>
+
+</body>
+</html>
+
+
